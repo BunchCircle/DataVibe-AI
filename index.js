@@ -576,36 +576,8 @@ function handleManualFilterAdd() {
         alert("Please select a column and enter a value.");
         return;
     }
-
-    // Just stage it, don't apply immediately
-    const displayVal = op === 'contains' ? `contains "${val}"` : (op === 'greater_than' ? `> ${val}` : (op === 'less_than' ? `< ${val}` : val));
-    
-    // Convert to the filter format expected by existing logic
-    // Existing logic expects {column, value} for equality.
-    // Since manual filter supports operators, we need to adapt handleApplyStagedFilters or just support equality for now to be consistent with chart clicks.
-    // Ideally, we refactor the filter system to support operators, but to stick to prompt constraints and minimize refactoring:
-    // If operator is NOT 'equals', we should probably treat this as a transformation (Remove Rows) or update filter logic.
-    // However, the "Filter" UI implies temporary view filtering. 
-    
-    // For simplicity in this iteration: If it's EQUALS, use standard filter. If not, alert user or implement advanced filtering.
-    // Given the constraints, let's treat non-equals as "Remove Rows" transformation (permanent filter) OR update filter logic.
-    // The prompt says "filter data", usually implying view.
     
     if (op !== 'equals') {
-        // Treat as a transformation "Remove Rows" where NOT condition matches?
-        // Or better: Just implement it as a "Remove Rows" transformation for now, as the current app structure separates "Transform" (permanent) from "Filter" (chart drilldown).
-        // Let's treat complex filters as "Transform -> Remove Rows" to be consistent with "Transform & Clean Data" feature.
-        
-        let removeOp;
-        // Logic inversion: Keep rows matching condition means removing rows NOT matching.
-        if (op === 'greater_than') removeOp = 'less_than'; // Simplification, edge cases exist
-        else if (op === 'less_than') removeOp = 'greater_than';
-        else if (op === 'contains') removeOp = 'not_contains'; // not supported by transformRemoveRows yet
-        
-        // Actually, let's just make it a "Remove Rows" command effectively.
-        // "Keep rows where X > 10" == "Remove rows where X <= 10".
-        // To be safe and avoid logic inversion headaches, let's just call it a Transformation request.
-        
         const config = {
             action: 'remove_rows',
             explanation: `User manually filtered data (kept rows where ${col} ${op} ${val}).`,
@@ -615,15 +587,6 @@ function handleManualFilterAdd() {
                 value: val
             }]
         };
-        
-        // Wait, remove_rows removes matching rows. The UI says "Filter", which usually means "Keep".
-        // If I say "Filter > 50", I want to see > 50. So I should remove <= 50.
-        // Let's stick to EQUALS for the "Staging" filter to remain compatible with Chart drilldown.
-        // And for complex stuff, suggest using the Chat or implement logic inversion.
-        
-        // Let's just update `stagedFilters` to support operators and update `applyFilters`? 
-        // `applyFilters` currently does: filteredRows.filter(row => String(row[column]) === String(value));
-        // Too risky to refactor entire filter engine now.
         
         if (op === 'equals') {
             stagedFilters.push({ column: col, value: val });
@@ -1109,22 +1072,36 @@ User Request:
 --- SUPPORTED ACTIONS & JSON FORMAT ---
 You must generate a JSON array of step objects. Each step must have an "action", "explanation", and "params".
 
-1.  **create_column**:
+1.  **extract_datetime**:
     {
-      "action": "create_column",
-      "explanation": "First, I'll calculate the [new column name]...",
+      "action": "extract_datetime",
+      "explanation": "Extract the hour/month/year from the date column...",
       "params": {
-        "newColumn": "new_column_name",
-        "column1": "first_operand_column",
-        "operator": "add" | "subtract" | "multiply" | "divide",
-        "column2": "second_operand_column"
+        "sourceColumn": "column_name",
+        "part": "year" | "month" | "day" | "hour" | "minute" | "day_of_week",
+        "newColumn": "new_column_name"
       }
     }
 
-2.  **remove_rows**:
+2.  **create_column**:
+    {
+      "action": "create_column",
+      "explanation": "Calculate a new column using math...",
+      "params": {
+        "newColumn": "new_column_name",
+        "column1": "first_operand_column",
+        "operator": "add" | "subtract" | "multiply" | "divide" | "floor" | "ceil" | "round" | "modulus",
+        "column2": "second_operand_column", // Optional if using 'value' or unary operator
+        "value": 10 // Use this if converting a column by a constant number (e.g. col / 2)
+      }
+    }
+    - 'floor', 'ceil', 'round' are unary operators (only use column1).
+    - 'modulus' requires column2 or value.
+
+3.  **remove_rows**:
     {
       "action": "remove_rows",
-      "explanation": "Then, I'll filter the data to only include rows where...",
+      "explanation": "Filter the data to only include rows where...",
       "params": {
         "conditions": [{
           "column": "column_name",
@@ -1134,10 +1111,10 @@ You must generate a JSON array of step objects. Each step must have an "action",
       }
     }
 
-3.  **aggregate**:
+4.  **aggregate**:
     {
       "action": "aggregate",
-      "explanation": "Next, I will group by [column] and calculate the [aggregation]...",
+      "explanation": "Group by [column] and calculate the [aggregation]...",
       "params": {
         "groupBy": "column_to_group_by",
         "aggregation": "sum" | "average" | "count",
@@ -1146,27 +1123,27 @@ You must generate a JSON array of step objects. Each step must have an "action",
     }
     - This action transforms the data. The new aggregated value column will be named 'aggregation_valueColumn' (e.g., 'average_Profit'). The groupBy column keeps its name.
 
-4.  **sort**:
+5.  **sort**:
     {
       "action": "sort",
-      "explanation": "I'll sort the results by [column]...",
+      "explanation": "Sort the results by [column]...",
       "params": {
         "column": "column_to_sort_by",
         "order": "ascending" | "descending"
       }
     }
 
-5.  **limit**:
+6.  **limit**:
     {
       "action": "limit",
-      "explanation": "Then, I'll take the top [number] results...",
+      "explanation": "Take the top [number] results...",
       "params": { "count": 5 }
     }
 
-6.  **visualize** (This MUST be the final step):
+7.  **visualize** (This MUST be the final step):
     {
       "action": "visualize",
-      "explanation": "Finally, here is a chart showing the result.",
+      "explanation": "Finally, show the chart.",
       "params": {
         "chartType": "bar" | "line" | "pie" | "donut",
         "title": "A descriptive chart title",
@@ -1218,7 +1195,7 @@ async function executeAnalysisPlan(plan) {
 
     for (const step of plan) {
         // Announce the step the AI is taking.
-        addMessageToChat(`<em>Step ${plan.indexOf(step) + 1}:</em> ${step.explanation}`, 'ai');
+        addMessageToChat(`<strong>Step ${plan.indexOf(step) + 1}:</strong> ${step.explanation}`, 'ai');
 
         if (step.action === 'visualize') {
             const chartConfig = step.params;
@@ -1247,6 +1224,8 @@ async function executeAnalysisPlan(plan) {
 function executeDataStep(dataObject, step) {
     const params = step.params;
     switch (step.action) {
+        case 'extract_datetime':
+            return transformExtractDatetime(dataObject, params);
         case 'create_column':
             return transformCreateColumn(dataObject, params);
         case 'remove_rows':
@@ -1439,23 +1418,91 @@ function transformRemoveRows(dataObject, conditions) {
     return dataObject;
 }
 
-function transformCreateColumn(dataObject, params) {
-    const { newColumn, column1, operator, column2 } = params;
+function transformExtractDatetime(dataObject, params) {
+    const { sourceColumn, part, newColumn } = params;
+    
     dataObject.data = dataObject.data.map(row => {
-        const val1 = parseFloat(String(row[column1]).replace(/,/g, ''));
-        const val2 = parseFloat(String(row[column2]).replace(/,/g, ''));
+        const val = row[sourceColumn];
+        let dateObj = null;
+        
+        // Attempt to parse date
+        if (val instanceof Date) {
+            dateObj = val;
+        } else if (typeof val === 'string') {
+            // Try standard parser
+            const parsed = Date.parse(val);
+            if (!isNaN(parsed)) {
+                dateObj = new Date(parsed);
+            } else {
+                // Handle simple time strings "HH:MM:SS" by creating a dummy date
+                const timeMatch = val.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+                if (timeMatch) {
+                    dateObj = new Date();
+                    dateObj.setHours(parseInt(timeMatch[1], 10));
+                    dateObj.setMinutes(parseInt(timeMatch[2], 10));
+                    dateObj.setSeconds(parseInt(timeMatch[3] || 0, 10));
+                }
+            }
+        }
+
         let newValue = null;
-        if (!isNaN(val1) && !isNaN(val2)) {
-            switch (operator) {
-                case 'add': newValue = val1 + val2; break;
-                case 'subtract': newValue = val1 - val2; break;
-                case 'multiply': newValue = val1 * val2; break;
-                case 'divide': newValue = val2 !== 0 ? (val1 / val2) : null; break;
+        if (dateObj) {
+            switch(part) {
+                case 'year': newValue = dateObj.getFullYear(); break;
+                case 'month': newValue = dateObj.getMonth() + 1; break; // 1-based
+                case 'day': newValue = dateObj.getDate(); break;
+                case 'hour': newValue = dateObj.getHours(); break;
+                case 'minute': newValue = dateObj.getMinutes(); break;
+                case 'day_of_week': newValue = dateObj.getDay(); break; // 0=Sun, 6=Sat
+            }
+        }
+        
+        return { ...row, [newColumn]: newValue };
+    });
+    
+    dataObject.meta.fields.push(newColumn);
+    dataObject.meta.inferredTypes[newColumn] = 'numerical'; // Extracted parts are numbers
+    return dataObject;
+}
+
+
+function transformCreateColumn(dataObject, params) {
+    const { newColumn, column1, operator, column2, value } = params;
+    
+    dataObject.data = dataObject.data.map(row => {
+        // Parse first operand
+        const val1 = parseFloat(String(row[column1]).replace(/,/g, ''));
+        
+        // Parse second operand (either column value or constant value)
+        let val2;
+        if (value !== undefined && value !== null) {
+            val2 = Number(value);
+        } else if (column2) {
+             val2 = parseFloat(String(row[column2]).replace(/,/g, ''));
+        }
+
+        let newValue = null;
+        if (!isNaN(val1)) {
+            // Unary operators
+            if (operator === 'floor') newValue = Math.floor(val1);
+            else if (operator === 'ceil') newValue = Math.ceil(val1);
+            else if (operator === 'round') newValue = Math.round(val1);
+            // Binary operators
+            else if (!isNaN(val2)) {
+                switch (operator) {
+                    case 'add': newValue = val1 + val2; break;
+                    case 'subtract': newValue = val1 - val2; break;
+                    case 'multiply': newValue = val1 * val2; break;
+                    case 'divide': newValue = val2 !== 0 ? (val1 / val2) : null; break;
+                    case 'modulus': newValue = val2 !== 0 ? (val1 % val2) : null; break;
+                }
             }
         }
         return { ...row, [newColumn]: newValue };
     });
+    
     dataObject.meta.fields.push(newColumn);
+    dataObject.meta.inferredTypes[newColumn] = 'numerical';
     return dataObject;
 }
 
@@ -1763,8 +1810,9 @@ function observeChatInputResize() {
 
     const resizeObserver = new ResizeObserver(entries => {
         for (let entry of entries) {
-            const height = entry.contentRect.height;
-            // Set the CSS custom property used for dynamic padding/margins
+            // We use offsetHeight to get the border-box height which includes padding and borders
+            // explicitly measuring the element is safer than relying on entry.contentRect for fixed elements with padding
+            const height = chatInputContainer.offsetHeight;
             document.documentElement.style.setProperty('--chat-input-height', `${height}px`);
         }
     });

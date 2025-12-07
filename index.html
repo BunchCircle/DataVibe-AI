@@ -112,12 +112,12 @@
     }
 
     .header h1 {
-      font-size: 1.5rem;
+      font-size: 2.5rem;
       font-weight: 900;
       color: var(--text-primary);
       text-transform: uppercase;
       letter-spacing: -1px;
-      text-shadow: 2px 2px 0px var(--google-blue);
+      text-shadow: 3px 3px 0px var(--google-yellow);
     }
     
     .menu-btn {
@@ -167,7 +167,8 @@
     .data-section h2 {
       font-size: 1.1rem;
       font-weight: 800;
-      margin: 0;
+      margin-top: 0.5rem;
+      margin-bottom: 0.5rem;
       padding: 0.5rem;
       background-color: var(--google-blue);
       color: white;
@@ -516,7 +517,8 @@
       flex-direction: column;
       gap: 1.5rem;
       scroll-behavior: smooth;
-      padding-bottom: calc(var(--chat-input-height, 80px) + 3vh + 1rem);
+      /* Increased bottom padding to accommodate fixed input box plus buffer */
+      padding-bottom: calc(var(--chat-input-height, 100px) + 6rem);
       background-image: 
         linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px),
         linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px);
@@ -776,10 +778,13 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
+        /* justify-content: center; REMOVED to prevent clipping on small screens */
         text-align: center;
-        height: 100%;
+        min-height: 100%;
         padding: 2rem;
+        /* Increased buffer to ensure content clears the fixed input */
+        padding-bottom: calc(var(--chat-input-height, 100px) + 6rem);
+        box-sizing: border-box;
     }
     .welcome-content {
         background: white;
@@ -788,6 +793,7 @@
         padding: 3rem;
         border-radius: 20px;
         max-width: 600px;
+        margin: auto; /* SAFE VERTICAL CENTERING */
     }
     .welcome-content h2 {
         font-size: 2.5rem;
@@ -969,6 +975,11 @@
     }
 
     @media (max-width: 900px) {
+        /* Prevent Header Text Overlap */
+        .header h1 {
+            font-size: 1.2rem;
+        }
+
         .menu-btn { 
             display: block; 
             margin-right: 1rem; 
@@ -1017,7 +1028,7 @@
         /* Modal Adjustments */
         .modal-content { width: 95%; padding: 1.5rem; }
         
-        #chat-history { padding: 1rem; }
+        #chat-history { padding: 1rem; padding-bottom: 10rem; }
     }
     
     /* Utility */
@@ -1206,6 +1217,15 @@
                         <span>Turn boring numbers into pictures.</span>
                     </div>
                 </div>
+
+                <div class="feature-item">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                    <div>
+                        <strong>Filter</strong>
+                        <span>Double-click charts to refine data.</span>
+                    </div>
+                </div>
+
                 <div class="feature-item">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22a7 7 0 0 0 7-7h-2a5 5 0 0 1-5 5v2z"></path><path d="M19.33 11.66A5 5 0 0 0 17 10h-2a7 7 0 0 1 4.33 1.66Z"></path><path d="M2 12h5a5 5 0 0 1 5 5v2a7 7 0 0 0-7-7Z"></path><path d="M12 2a7 7 0 0 0-7 7h2a5 5 0 0 1 5-5V2Z"></path></svg>
                     <div>
