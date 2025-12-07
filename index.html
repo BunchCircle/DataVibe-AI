@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
   <title>DataInsight AI</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -102,6 +102,7 @@
       align-items: center;
       flex-shrink: 0;
       z-index: 100;
+      gap: 1rem;
     }
 
     .header-left {
@@ -143,12 +144,13 @@
       flex-grow: 1;
       overflow: hidden;
       background-color: var(--bg-color);
+      position: relative;
     }
 
-    /* --- Sidebar --- */
+    /* --- Sidebar (Data Section) --- */
     .data-section {
-      width: 25%;
-      min-width: 320px;
+      width: 340px; /* Fixed robust width for desktop */
+      flex-shrink: 0;
       background-color: #FFF;
       padding: 2rem;
       border-right: var(--border-width) solid var(--border-color);
@@ -156,8 +158,10 @@
       flex-direction: column;
       overflow-y: auto;
       gap: 1.5rem;
-      transition: width 0.3s ease;
       position: relative;
+      z-index: 10;
+      height: 100%;
+      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     .data-section h2 {
@@ -173,12 +177,29 @@
       text-transform: uppercase;
       transform: rotate(-1deg);
     }
+    
+    /* Backdrop for Mobile Sidebar */
+    .sidebar-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.6);
+        backdrop-filter: blur(4px);
+        z-index: 1500;
+        display: none;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    .sidebar-backdrop.visible {
+        display: block;
+        opacity: 1;
+    }
 
     .analysis-section {
-      width: 75%;
+      flex-grow: 1;
+      min-width: 0; /* Important for flex children scrolling */
       display: flex;
       flex-direction: column;
-      min-height: 0; 
+      height: 100%;
       position: relative;
     }
 
@@ -258,6 +279,100 @@
         font-weight: 700;
         text-transform: uppercase;
     }
+
+    /* --- Data Tools (Transform) Section --- */
+    #data-tools-section {
+        background-color: #fff;
+        border: var(--border-width) solid var(--border-color);
+        box-shadow: 4px 4px 0px var(--border-color);
+        border-radius: var(--radius-md);
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .tools-tabs {
+        display: flex;
+        gap: 0.25rem;
+        border-bottom: 2px solid black;
+        padding-bottom: 0.5rem;
+    }
+    
+    .tool-tab {
+        flex: 1;
+        padding: 0.4rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        background: white;
+        border: 2px solid transparent;
+        border-bottom: none;
+        cursor: pointer;
+        color: #888;
+        font-family: var(--font-mono);
+        text-transform: uppercase;
+    }
+    
+    .tool-tab.active {
+        color: black;
+        background: var(--google-yellow);
+        border: 2px solid black;
+        box-shadow: 2px 2px 0 black;
+        transform: translateY(-2px);
+    }
+
+    .tool-content {
+        display: none;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .tool-content.active {
+        display: flex;
+    }
+
+    .tool-input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .tool-input-group label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #444;
+    }
+
+    .neo-select, .neo-input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 2px solid black;
+        border-radius: 4px;
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        background: white;
+    }
+    .neo-select:focus, .neo-input:focus {
+        outline: none;
+        background-color: #fef9e7;
+    }
+
+    .tool-action-btn {
+        background: var(--google-blue);
+        color: white;
+        border: 2px solid black;
+        padding: 0.5rem;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 2px 2px 0 black;
+        margin-top: 0.5rem;
+        text-transform: uppercase;
+        font-size: 0.8rem;
+    }
+    .tool-action-btn:hover {
+        transform: translate(-1px, -1px);
+        box-shadow: 3px 3px 0 black;
+    }
+
 
     /* --- Staging & Filter --- */
     #staging-section, #filter-section {
@@ -848,20 +963,61 @@
         font-family: var(--font-mono);
     }
     
-    /* Floating positioning */
-    @media (min-width: 769px) {
-        #chat-input-container { left: calc(25% + 2rem); }
+    /* --- Mobile & Tablet Responsiveness --- */
+    @media (min-width: 901px) {
+        #chat-input-container { left: calc(340px + 2rem); }
     }
-    @media (max-width: 768px) {
-        .data-section {
-            width: 85%;
-            z-index: 2000;
-            border-right: 4px solid black;
-            box-shadow: 10px 0 0 rgba(0,0,0,0.2);
+
+    @media (max-width: 900px) {
+        .menu-btn { 
+            display: block; 
+            margin-right: 1rem; 
         }
-        #chat-input-container { left: 1rem; right: 1rem; bottom: 1rem; width: auto; }
+        
+        /* Mobile Sidebar becomes off-canvas drawer */
+        .data-section {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            width: 85%;
+            max-width: 320px;
+            transform: translateX(-105%); /* Hide off-screen */
+            border-right: 4px solid black;
+            box-shadow: none;
+            z-index: 2000;
+        }
+        
+        .data-section.open {
+            transform: translateX(0);
+            box-shadow: 10px 0 0 rgba(0,0,0,0.1);
+        }
+
+        /* Adjust Chat Input for mobile */
+        #chat-input-container {
+            left: 1rem; 
+            right: 1rem; 
+            bottom: 1rem; 
+            width: auto;
+        }
+
+        /* Better message width on small screens */
         .message { max-width: 90%; }
-        .welcome-content { padding: 1.5rem; }
+        
+        /* Charts fit screen height better */
+        .chart-wrapper { height: 300px !important; }
+        
+        /* Always show actions on touch devices since hover is rare */
+        .chart-actions { opacity: 1 !important; }
+
+        /* Welcome screen adjustments */
+        .welcome-content { padding: 1.5rem; width: 95%; }
+        .welcome-content h2 { font-size: 2rem; }
+        
+        /* Modal Adjustments */
+        .modal-content { width: 95%; padding: 1.5rem; }
+        
+        #chat-history { padding: 1rem; }
     }
     
     /* Utility */
@@ -931,6 +1087,72 @@
             <p><strong>Transform Data</strong></p>
             <span>Ask: <em>"remove rows where stock is 0."</em></span>
           </div>
+      </div>
+      
+      <!-- Data Tools Section -->
+      <div id="data-tools-section" class="hidden">
+        <h2 style="font-size: 1rem; border: none; box-shadow: none; background: none; color: black; transform: none; text-align: left; padding: 0; margin-bottom: 0.5rem;">Data Tools</h2>
+        <div class="tools-tabs">
+            <button class="tool-tab active" data-target="tool-rename">Rename</button>
+            <button class="tool-tab" data-target="tool-math">Math</button>
+            <button class="tool-tab" data-target="tool-filter">Filter</button>
+        </div>
+
+        <!-- Rename Tool -->
+        <div id="tool-rename" class="tool-content active">
+            <div class="tool-input-group">
+                <label>Select Column</label>
+                <select id="rename-col-select" class="neo-select"></select>
+            </div>
+            <div class="tool-input-group">
+                <label>New Name</label>
+                <input type="text" id="rename-new-name" class="neo-input" placeholder="e.g. TotalRevenue">
+            </div>
+            <button id="tool-rename-btn" class="tool-action-btn">Rename</button>
+        </div>
+
+        <!-- Math Tool -->
+        <div id="tool-math" class="tool-content">
+            <div class="tool-input-group">
+                <label>New Column Name</label>
+                <input type="text" id="math-new-name" class="neo-input" placeholder="e.g. ProfitMargin">
+            </div>
+            <div class="tool-input-group">
+                <label>Formula</label>
+                <div style="display: flex; gap: 4px; align-items: center;">
+                    <select id="math-col1" class="neo-select" style="width: 35%"></select>
+                    <select id="math-op" class="neo-select" style="width: 25%; text-align: center;">
+                        <option value="add">+</option>
+                        <option value="subtract">-</option>
+                        <option value="multiply">*</option>
+                        <option value="divide">/</option>
+                    </select>
+                    <select id="math-col2" class="neo-select" style="width: 35%"></select>
+                </div>
+            </div>
+            <button id="tool-math-btn" class="tool-action-btn">Calculate</button>
+        </div>
+
+        <!-- Filter Tool -->
+        <div id="tool-filter" class="tool-content">
+            <div class="tool-input-group">
+                <label>Column</label>
+                <select id="filter-col-select" class="neo-select"></select>
+            </div>
+            <div class="tool-input-group">
+                <label>Condition</label>
+                <div style="display: flex; gap: 4px;">
+                     <select id="filter-op" class="neo-select" style="width: 40%">
+                        <option value="equals">Equals</option>
+                        <option value="contains">Contains</option>
+                        <option value="greater_than">></option>
+                        <option value="less_than"><</option>
+                    </select>
+                    <input type="text" id="filter-value" class="neo-input" style="width: 60%" placeholder="Value">
+                </div>
+            </div>
+            <button id="tool-filter-add-btn" class="tool-action-btn">Stage Filter</button>
+        </div>
       </div>
 
       <div id="staging-section" class="hidden">
