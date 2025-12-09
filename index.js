@@ -1,3 +1,5 @@
+
+
 import { GoogleGenAI, Chat } from "https://esm.run/@google/genai";
 import Papa from "https://esm.run/papaparse";
 import zoomPlugin from 'https://esm.run/chartjs-plugin-zoom';
@@ -1004,11 +1006,16 @@ You are an intent classifier. Your task is to categorize a user's request into o
 - 'TRANSFORMATION': The user wants to permanently change the dataset. This includes removing rows, creating new columns, or renaming columns.
   Examples: "remove all rows where sales are 0", "create a profit column from sales and cost", "rename 'cust_id' to 'CustomerID'".
 
-- 'ANALYSIS': The user is asking a direct question that can be answered with a single aggregation or visualization from the existing data.
+- 'ANALYSIS': The user is asking a direct question that can be answered with a single aggregation or visualization from the existing data using a standard chart type (Bar, Line, Pie, Donut, Scatter).
   Examples: "what are the total sales by region?", "show me a chart of sales over time", "count the number of products".
 
-- 'COMPLEX_ANALYSIS': The user's request requires multiple steps to answer. This often involves creating temporary calculations, filtering, sorting, and then visualizing the result. These steps are done for a single query and DO NOT permanently change the data.
-  Examples: "show me the top 5 products by profit margin", "compare the monthly sales growth for the last two quarters", "which category had the highest sales in the second half of the year?".
+- 'COMPLEX_ANALYSIS': The user's request requires multiple steps to answer or complex logic. This includes requests for:
+  - Aggregating by multiple columns (e.g. "Sales by Region and Category", "Average Profit grouped by Year and Product").
+  - Calculating multiple metrics at once (e.g. "Show me Sum of Sales and Average Discount", "Compare Sales and Profit by Region").
+  - Mathematical transformations before plotting (e.g. "Percent of Total").
+  - Comparisons, Ranking (Top N), or Pivot-like structures.
+  - Weighted averages or custom statistical formulas.
+  Examples: "show me the top 5 products by profit margin", "compare the monthly sales growth for the last two quarters", "what is the correlation between age and salary?", "sales breakdown by region and product", "Calculate the weighted average price".
 
 User request: "${userQuery}"
 
@@ -1061,7 +1068,7 @@ function buildPlannerPrompt(userQuery) {
     ).join(', ');
 
     return `
-You are a data analysis planner. Your job is to break down a complex user query into a sequence of simple, executable steps. The analysis is temporary and does not modify the original dataset.
+You are a data analysis planner. Your job is to break down a complex user query into a sequence of executable steps. The analysis is temporary and does not modify the original dataset.
 
 Dataset Schema (Available Columns and their inferred types):
 - ${columnsWithTypes}
@@ -1075,89 +1082,105 @@ You must generate a JSON array of step objects. Each step must have an "action",
 1.  **extract_datetime**:
     {
       "action": "extract_datetime",
-      "explanation": "Extract the hour/month/year from the date column...",
+      "explanation": "Extract part from date...",
       "params": {
-        "sourceColumn": "column_name",
+        "sourceColumn": "col",
         "part": "year" | "month" | "day" | "hour" | "minute" | "day_of_week",
-        "newColumn": "new_column_name"
+        "newColumn": "new_col_name"
       }
     }
 
 2.  **create_column**:
     {
       "action": "create_column",
-      "explanation": "Calculate a new column using math...",
+      "explanation": "Calculate a new column...",
       "params": {
-        "newColumn": "new_column_name",
-        "column1": "first_operand_column",
+        "newColumn": "new_col",
+        "column1": "col1",
         "operator": "add" | "subtract" | "multiply" | "divide" | "floor" | "ceil" | "round" | "modulus",
-        "column2": "second_operand_column", // Optional if using 'value' or unary operator
-        "value": 10 // Use this if converting a column by a constant number (e.g. col / 2)
+        "column2": "col2", // or 'value'
+        "value": 10 // Optional constant
       }
     }
-    - 'floor', 'ceil', 'round' are unary operators (only use column1).
-    - 'modulus' requires column2 or value.
 
 3.  **remove_rows**:
     {
       "action": "remove_rows",
-      "explanation": "Filter the data to only include rows where...",
+      "explanation": "Filter data...",
       "params": {
         "conditions": [{
-          "column": "column_name",
+          "column": "col",
           "operator": "equals" | "not_equals" | "greater_than" | "less_than" | "contains",
-          "value": "some_value"
+          "value": "val"
         }]
       }
     }
 
-4.  **aggregate**:
+4.  **aggregate** (Grouping & Pivot Prep):
     {
       "action": "aggregate",
-      "explanation": "Group by [column] and calculate the [aggregation]...",
+      "explanation": "Group by Region and Category, calculate Total Sales and Avg Profit...",
       "params": {
-        "groupBy": "column_to_group_by",
-        "aggregation": "sum" | "average" | "count",
-        "valueColumn": "column_to_aggregate" // Omit for 'count'
+        "groupBy": ["col1", "col2"], // Array of columns to group by. Use empty array [] for global aggregation.
+        "aggregations": [
+           { "column": "colA", "type": "sum" | "average" | "count" | "min" | "max", "newColumn": "Sum_A" },
+           { "column": "colB", "type": "average", "newColumn": "Avg_B" }
+        ]
       }
     }
-    - This action transforms the data. The new aggregated value column will be named 'aggregation_valueColumn' (e.g., 'average_Profit'). The groupBy column keeps its name.
+    - **Grouping**: Use this to create a summary table. If the user wants to chart "Sales by Region", group by "Region".
+    - **Multi-Level Grouping**: If the user wants "Sales by Region and Product", group by ["Region", "Product"].
+    - The output will ONLY contain the groupBy columns and the newColumn(s).
 
 5.  **sort**:
     {
       "action": "sort",
-      "explanation": "Sort the results by [column]...",
-      "params": {
-        "column": "column_to_sort_by",
-        "order": "ascending" | "descending"
-      }
+      "explanation": "Sort results...",
+      "params": { "column": "col", "order": "ascending" | "descending" }
     }
 
 6.  **limit**:
-    {
-      "action": "limit",
-      "explanation": "Take the top [number] results...",
-      "params": { "count": 5 }
-    }
+    { "action": "limit", "explanation": "Take top N...", "params": { "count": 5 } }
 
-7.  **visualize** (This MUST be the final step):
+7.  **run_javascript** (Ultimate Flexibility):
     {
-      "action": "visualize",
-      "explanation": "Finally, show the chart.",
+      "action": "run_javascript",
+      "explanation": "Calculate weighted avg / correlation / reshape data...",
       "params": {
-        "chartType": "bar" | "line" | "pie" | "donut",
-        "title": "A descriptive chart title",
-        "xAxisColumn": "column_for_x_axis_or_labels",
-        "yAxisColumn": "column_for_y_axis_or_values"
+        "code": "const total = data.reduce((sum, r) => sum + r.sales, 0); return data.map(row => ({ ...row, pct: row.sales/total }));"
       }
     }
+    - **Use this for**:
+      - Weighted averages or custom statistical formulas.
+      - Complex conditional logic not supported by 'create_column'.
+      - Reshaping data (e.g., pivoting manually if needed, though 'aggregate' handles most grouping).
+    - The 'code' must be the BODY of a JavaScript function.
+    - The function receives a variable \`data\` (array of objects).
+    - It must return the transformed array of objects.
+
+8.  **visualize** (Must be the final step):
+    {
+      "action": "visualize",
+      "explanation": "Show the chart.",
+      "params": {
+        "chartType": "bar" | "line" | "pie" | "donut" | "scatter",
+        "title": "Title",
+        "xAxisColumn": "col_for_x",
+        "yAxisColumn": "col_for_y" OR ["col_y1", "col_y2"],
+        "seriesColumn": "optional_col_to_group_datasets" 
+      }
+    }
+    - **Single Metric**: Set "yAxisColumn" to a string (e.g. "Total Sales").
+    - **Multi-Metric Comparison**: Set "yAxisColumn" to an array (e.g. ["Total Sales", "Total Profit"]). This creates side-by-side bars or multiple lines sharing the same X-axis.
+    - **Grouped/Stacked by Dimension**: Use "seriesColumn" when you have grouped by TWO columns in the 'aggregate' step (e.g. grouped by ["Region", "Product"]). 
+      - Set "xAxisColumn" to "Region", "seriesColumn" to "Product", and "yAxisColumn" to "Sales".
+    - **Important**: "seriesColumn" and "yAxisColumn" as an array are mutually exclusive. Use one or the other.
 
 --- RESPONSE RULES ---
 - Respond with ONLY the JSON array of steps.
 - Do not use markdown like \`\`\`json.
-- Ensure all column names in the JSON exactly match the schema.
-- The plan must end with a "visualize" action.
-- If the request cannot be fulfilled, respond with: [{ "action": "error", "explanation": "I'm sorry, I can't fulfill that request with the available tools." }]`;
+- If the request cannot be fulfilled, return: [{ "action": "error", "explanation": "Reason..." }]
+`;
 }
 
 
@@ -1199,19 +1222,47 @@ async function executeAnalysisPlan(plan) {
 
         if (step.action === 'visualize') {
             const chartConfig = step.params;
-            const labels = tempData.data.map(row => row[chartConfig.xAxisColumn]);
-            const values = tempData.data.map(row => row[chartConfig.yAxisColumn]);
+            
+            // Check if columns exist to prevent blank charts
+            const firstRow = tempData.data[0] || {};
+            if (chartConfig.xAxisColumn && firstRow[chartConfig.xAxisColumn] === undefined) {
+                console.warn(`Warning: Column '${chartConfig.xAxisColumn}' not found in data for visualization.`);
+            }
+             // Helper to check yAxisColumn which can be string or array
+             const checkY = (col) => {
+                 if (firstRow[col] === undefined) console.warn(`Warning: Column '${col}' not found in data for visualization.`);
+             };
 
-            const precomputedData = { labels, values };
-            const axisTitles = { x: chartConfig.xAxisColumn, y: chartConfig.yAxisColumn };
+             if (Array.isArray(chartConfig.yAxisColumn)) {
+                 chartConfig.yAxisColumn.forEach(checkY);
+             } else if (chartConfig.yAxisColumn) {
+                 checkY(chartConfig.yAxisColumn);
+             }
+
+            if (chartConfig.seriesColumn && firstRow[chartConfig.seriesColumn] === undefined) {
+                console.warn(`Warning: Column '${chartConfig.seriesColumn}' not found in data for visualization.`);
+            }
+
+            // We must pass the FULL data to addChartMessageToChat if seriesColumn is present or standard processing is needed
+            // However, the existing architecture expects 'precomputedData' to be simple labels/values for 'complex' analysis.
+            // If seriesColumn is used, we need 'prepareChartData' to handle the pivoting logic.
+            // Therefore, we can utilize 'activeData' override hack or pass data directly.
             
-            const finalChartConfig = {
-                ...chartConfig,
-                axisTitles: axisTitles,
-                explanation: step.explanation
-            };
+            // Temporary override of activeData to allow prepareChartData to work on the transformed tempData
+            const originalActive = activeData;
+            activeData = tempData; // Set context to transformed data
             
-            await addChartMessageToChat(finalChartConfig, precomputedData);
+            try {
+                // If the planner produced a result that can be directly visualized via standard logic (which supports seriesColumn now)
+                await addChartMessageToChat(chartConfig, null); 
+            } catch (e) {
+                 // Fallback if standard preparation fails, though planner should be accurate.
+                 console.error("Visualization error in plan execution", e);
+                 addErrorMessageToChat("Visualization Error", e.message);
+            } finally {
+                activeData = originalActive; // Restore context
+            }
+
             await generateAndDisplayFollowUpQuestions('<strong>What\'s next?</strong> Here are some ideas:');
             return; // Plan finished
         }
@@ -1238,6 +1289,8 @@ function executeDataStep(dataObject, step) {
             return executeSort(dataObject, params);
         case 'limit':
             return executeLimit(dataObject, params);
+        case 'run_javascript':
+            return executeRunJavascript(dataObject, params);
         default:
             throw new Error(`Unsupported plan action: ${step.action}`);
     }
@@ -1523,42 +1576,113 @@ function transformRenameColumn(dataObject, params) {
 }
 
 function executeAggregate(dataObject, params) {
-    const { groupBy, aggregation, valueColumn } = params;
+    const { groupBy, aggregations } = params; 
+    
+    // Normalize groupBy: handle undefined (global agg), single string, or array
+    let groupByCols = [];
+    if (groupBy) {
+        groupByCols = Array.isArray(groupBy) ? groupBy : [groupBy];
+    }
+    
     const groups = {};
 
     dataObject.data.forEach(row => {
-        const key = row[groupBy];
-        if (key === undefined || key === null) return;
+        // Create a unique key for the group based on all columns
+        const keyParts = groupByCols.map(col => row[col]);
         
-        groups[key] = groups[key] || { sum: 0, count: 0 };
+        // Only skip if we HAVE grouping columns and one is missing. 
+        // For global aggregation (no groupBy), we don't skip.
+        if (groupByCols.length > 0 && keyParts.some(k => k === undefined || k === null)) return;
         
-        if (aggregation !== 'count') {
-            const value = parseFloat(String(row[valueColumn]).replace(/,/g, ''));
-            if (!isNaN(value)) {
-                groups[key].sum += value;
-            }
+        const key = groupByCols.length > 0 ? keyParts.join('::') : 'ALL';
+        
+        if (!groups[key]) {
+            groups[key] = { 
+                count: 0, 
+                keyValues: keyParts, // Store original values for reconstruction
+                aggs: {} 
+            };
+            
+            // Initialize aggregators
+            aggregations.forEach(agg => {
+                groups[key].aggs[agg.newColumn] = { sum: 0, min: Infinity, max: -Infinity, count: 0, values: [] };
+            });
         }
+        
         groups[key].count += 1;
+
+        // Process each aggregation definition for this row
+        aggregations.forEach(agg => {
+            if (agg.type === 'count') {
+                // Count is handled by the group count mainly, but if they want specific column non-null count:
+                 if (row[agg.column] !== undefined && row[agg.column] !== null && row[agg.column] !== '') {
+                    groups[key].aggs[agg.newColumn].count += 1;
+                 }
+            } else {
+                const val = parseFloat(String(row[agg.column]).replace(/,/g, ''));
+                if (!isNaN(val)) {
+                    groups[key].aggs[agg.newColumn].sum += val;
+                    groups[key].aggs[agg.newColumn].min = Math.min(groups[key].aggs[agg.newColumn].min, val);
+                    groups[key].aggs[agg.newColumn].max = Math.max(groups[key].aggs[agg.newColumn].max, val);
+                    groups[key].aggs[agg.newColumn].count += 1;
+                }
+            }
+        });
     });
 
     const aggregatedData = [];
-    const newColumnName = `${aggregation}_${valueColumn || 'count'}`;
+    const outputFields = [...groupByCols];
+    aggregations.forEach(agg => outputFields.push(agg.newColumn));
 
     for (const key in groups) {
-        let value;
-        if (aggregation === 'sum') {
-            value = groups[key].sum;
-        } else if (aggregation === 'average') {
-            value = groups[key].count > 0 ? groups[key].sum / groups[key].count : 0;
-        } else { // count
-            value = groups[key].count;
-        }
-        aggregatedData.push({ [groupBy]: key, [newColumnName]: value });
+        const group = groups[key];
+        const row = {};
+        
+        // Restore Group By Columns
+        groupByCols.forEach((col, idx) => {
+            row[col] = group.keyValues[idx];
+        });
+
+        // Calculate Final Aggregation Values
+        aggregations.forEach(agg => {
+            const stats = group.aggs[agg.newColumn];
+            let finalVal;
+            
+            switch (agg.type) {
+                case 'sum': finalVal = stats.sum; break;
+                case 'average': finalVal = stats.count > 0 ? stats.sum / stats.count : 0; break;
+                case 'min': finalVal = stats.min === Infinity ? null : stats.min; break;
+                case 'max': finalVal = stats.max === -Infinity ? null : stats.max; break;
+                case 'count': finalVal = stats.count; break;
+                default: finalVal = 0;
+            }
+            row[agg.newColumn] = finalVal;
+        });
+        
+        aggregatedData.push(row);
     }
+    
+    // Reconstruct inferredTypes for the new dataset
+    const newInferredTypes = {};
+    // Copy types for group columns from original if available
+    groupByCols.forEach(col => {
+        if (dataObject.meta.inferredTypes && dataObject.meta.inferredTypes[col]) {
+            newInferredTypes[col] = dataObject.meta.inferredTypes[col];
+        } else {
+             newInferredTypes[col] = 'string'; // Fallback
+        }
+    });
+    // Set types for aggregated columns
+    aggregations.forEach(agg => {
+        newInferredTypes[agg.newColumn] = 'numerical';
+    });
 
     return {
         data: aggregatedData,
-        meta: { fields: [groupBy, newColumnName] }
+        meta: { 
+            fields: outputFields,
+            inferredTypes: newInferredTypes
+        }
     };
 }
 
@@ -1584,6 +1708,40 @@ function executeSort(dataObject, params) {
 function executeLimit(dataObject, params) {
     dataObject.data = dataObject.data.slice(0, params.count);
     return dataObject;
+}
+
+function executeRunJavascript(dataObject, params) {
+    try {
+        // params.code is the body of the function
+        const func = new Function('data', params.code);
+        
+        // Execute the function with the data array
+        const resultData = func(dataObject.data);
+        
+        if (!Array.isArray(resultData)) {
+            throw new Error("Custom code must return an array of objects.");
+        }
+        
+        // Re-infer schema from the new result data
+        let newFields = [];
+        if (resultData.length > 0) {
+            newFields = Object.keys(resultData[0]);
+        }
+        
+        // Infer types for the new fields so subsequent steps (like visualization) know what to do
+        const newInferredTypes = inferColumnTypes(resultData, newFields);
+
+        return {
+            data: resultData,
+            meta: { 
+                fields: newFields,
+                inferredTypes: newInferredTypes
+            }
+        };
+    } catch (e) {
+        console.error("Javascript Execution Error", e);
+        throw new Error(`Code execution failed: ${e.message}`);
+    }
 }
 
 
@@ -1962,6 +2120,8 @@ function renderVisualization(config, canvasElement, precomputedData = null) {
                 const elementIndex = elements[0].index;
                 const clickedLabel = chart.data.labels[elementIndex];
                 
+                // For grouped/stacked charts with series, we filter by the X-Axis Label.
+                // We cannot easily filter by the Series dimension in this UI paradigm yet.
                 const labelColName = ['pie', 'donut', 'doughnut'].includes(chart.config.type)
                     ? config.categoryColumn
                     : config.xAxisColumn;
@@ -2070,7 +2230,7 @@ function renderVisualization(config, canvasElement, precomputedData = null) {
 
 function prepareChartData(config) {
     const { data, meta } = activeData;
-    const { chartType, xAxisColumn, yAxisColumn, categoryColumn, valueColumn, aggregation } = config;
+    const { chartType, xAxisColumn, yAxisColumn, seriesColumn, categoryColumn, valueColumn, aggregation } = config;
     const actualColumns = meta.fields;
 
     let finalChartData;
@@ -2086,7 +2246,188 @@ function prepareChartData(config) {
         '#24C1E0'  // Cyan
     ];
     
-    if (['bar', 'line', 'area', 'pie', 'donut'].includes(chartType)) {
+    // --- MULTI-METRIC (ARRAY of Y-AXIS) LOGIC ---
+    // This takes precedence over single Y axis if provided as array.
+    // It creates multiple datasets on the same chart (e.g., Sales vs Profit).
+    if (Array.isArray(yAxisColumn)) {
+        const labelColName = xAxisColumn;
+        const labelCol = findMatchingColumn(labelColName, actualColumns);
+        
+        if (!labelCol) throw new Error(`X-Axis column "${labelColName}" not found.`);
+        
+        // Find all matching Y columns
+        const yCols = yAxisColumn.map(yName => {
+            const match = findMatchingColumn(yName, actualColumns);
+            if (!match) throw new Error(`Y-Axis column "${yName}" not found.`);
+            return match;
+        });
+
+        axisTitles.x = labelCol;
+        axisTitles.y = yCols.join(' & '); // Title for multiple metrics
+
+        // Group data by X to ensure alignment if necessary (though strictly for row-by-row simple plotting, we assume data is ready)
+        // Since this is likely output from 'aggregate' where rows are unique per X, we can just map.
+        // However, to be safe (and support sorting), we extract and sort.
+        
+        const sortedData = [...data].sort((a, b) => {
+            const valA = a[labelCol];
+            const valB = b[labelCol];
+            // Sort dates or numbers or strings
+            const dA = new Date(valA), dB = new Date(valB);
+            if (!isNaN(dA) && !isNaN(dB)) return dA - dB;
+            const nA = parseFloat(valA), nB = parseFloat(valB);
+            if (!isNaN(nA) && !isNaN(nB)) return nA - nB;
+            return String(valA).localeCompare(String(valB));
+        });
+
+        const labels = sortedData.map(row => row[labelCol]);
+        
+        const datasets = yCols.map((col, index) => {
+            const values = sortedData.map(row => parseFloat(String(row[col]).replace(/,/g, '')));
+            const color = colors[index % colors.length];
+            
+            const ds = {
+                label: col,
+                data: values,
+                backgroundColor: color,
+                borderColor: '#000',
+                borderWidth: 1
+            };
+
+            if (chartType === 'line' || chartType === 'area') {
+                ds.borderColor = color;
+                ds.backgroundColor = 'transparent'; // Lines usually transparent unless area
+                ds.pointBackgroundColor = color;
+                ds.pointBorderColor = '#000';
+                ds.pointRadius = 4;
+                ds.tension = 0.2;
+                if (chartType === 'area') {
+                    ds.fill = true;
+                    ds.backgroundColor = color + '33'; // Add transparency
+                }
+            }
+            return ds;
+        });
+
+        finalChartData = {
+            labels: labels,
+            datasets: datasets
+        };
+    }
+    // --- MULTI-SERIES LOGIC (GROUPED/STACKED by a Column Value) ---
+    else if (seriesColumn && ['bar', 'line', 'area', 'scatter'].includes(chartType)) {
+        const labelColName = xAxisColumn;
+        const valueColName = yAxisColumn; // Single Y column here
+        const seriesColName = seriesColumn;
+
+        const labelCol = findMatchingColumn(labelColName, actualColumns);
+        const valueCol = findMatchingColumn(valueColName, actualColumns);
+        const seriesCol = findMatchingColumn(seriesColName, actualColumns);
+
+        if (!labelCol || !valueCol || !seriesCol) {
+            let errorMsg = "Invalid columns for multi-series chart.";
+            if (!labelCol) errorMsg += ` X-Axis "${labelColName}" not found.`;
+            if (!valueCol) errorMsg += ` Y-Axis "${valueColName}" not found.`;
+            if (!seriesCol) errorMsg += ` Series "${seriesColName}" not found.`;
+            throw new Error(errorMsg);
+        }
+
+        axisTitles.x = labelCol;
+        axisTitles.y = valueCol;
+
+        if (chartType === 'scatter') {
+             // For scatter, we just group the points by series and plot them
+             const seriesGroups = {};
+             data.forEach(row => {
+                 const sVal = row[seriesCol];
+                 if (!sVal) return;
+                 if (!seriesGroups[sVal]) seriesGroups[sVal] = [];
+                 
+                 const xVal = parseFloat(String(row[labelCol]).replace(/,/g, ''));
+                 const yVal = parseFloat(String(row[valueCol]).replace(/,/g, ''));
+                 
+                 if (!isNaN(xVal) && !isNaN(yVal)) {
+                     seriesGroups[sVal].push({ x: xVal, y: yVal });
+                 }
+             });
+
+             const datasets = Object.keys(seriesGroups).map((seriesName, index) => {
+                 return {
+                     label: seriesName,
+                     data: seriesGroups[seriesName],
+                     backgroundColor: colors[index % colors.length],
+                     borderColor: '#000',
+                     borderWidth: 1,
+                     pointRadius: 6,
+                     pointHoverRadius: 8
+                 };
+             });
+
+             finalChartData = { datasets };
+
+        } else {
+            // For Bar/Line/Area, we need to pivot the data
+            // Map<SeriesValue, Map<XValue, YValue>>
+            const seriesMap = {}; 
+            const allX = new Set();
+
+            data.forEach(row => {
+                const xVal = row[labelCol];
+                const sVal = row[seriesCol];
+                const yVal = parseFloat(String(row[valueCol]).replace(/,/g, ''));
+
+                if (xVal !== undefined && sVal !== undefined && !isNaN(yVal)) {
+                    allX.add(xVal);
+                    if (!seriesMap[sVal]) seriesMap[sVal] = {};
+                    
+                    // Sum duplicates if they exist (safe default for pivot)
+                    seriesMap[sVal][xVal] = (seriesMap[sVal][xVal] || 0) + yVal;
+                }
+            });
+
+            // Sort X Axis
+            const sortedX = Array.from(allX).sort((a, b) => {
+                const dateA = new Date(a);
+                const dateB = new Date(b);
+                if (!isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
+                    return dateA - dateB;
+                }
+                const numA = parseFloat(a);
+                const numB = parseFloat(b);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                return String(a).localeCompare(String(b));
+            });
+
+            const datasets = Object.keys(seriesMap).map((seriesName, index) => {
+                const dataPoints = sortedX.map(x => seriesMap[seriesName][x] || 0);
+                const color = colors[index % colors.length];
+                
+                const ds = {
+                    label: seriesName,
+                    data: dataPoints,
+                    backgroundColor: color,
+                    borderColor: color, // Use color for line border
+                    borderWidth: 2
+                };
+
+                if (chartType === 'line' || chartType === 'area') {
+                    ds.pointBackgroundColor = color;
+                    ds.pointBorderColor = '#000';
+                    ds.pointRadius = 4;
+                    ds.tension = 0.2;
+                    if (chartType === 'area') ds.fill = true;
+                }
+                return ds;
+            });
+
+            finalChartData = {
+                labels: sortedX,
+                datasets: datasets
+            };
+        }
+    }
+    // --- STANDARD LOGIC (SINGLE SERIES) ---
+    else if (['bar', 'line', 'area', 'pie', 'donut'].includes(chartType)) {
         const aiLabelCol = ['pie', 'donut'].includes(chartType) ? categoryColumn : xAxisColumn;
         const aiValueCol = ['pie', 'donut'].includes(chartType) ? valueColumn : yAxisColumn;
 

@@ -1,0 +1,83 @@
+# DataInsight AI - Application Overview
+
+## 1. Executive Summary
+DataInsight AI is an intelligent, browser-based analytics assistant that transforms raw data files (CSV, Excel) into actionable insights. By leveraging Google's Gemini 2.5 AI model, it allows users to query data using natural language, perform complex statistical analysis, and generate interactive visualizations instantly. It bridges the gap between non-technical users and advanced data analytics operations.
+
+## 2. Comprehensive Feature List
+
+### 📥 Data Ingestion & Preparation
+- **Multi-Format Support**: Drag & drop CSV (`.csv`) and Excel (`.xlsx`, `.xls`) files (up to 49MB).
+- **Auto-Cleaning**: Automatically detects and strips formatting characters (currency symbols like $, ₹, commas, %) to convert text columns into usable numbers.
+- **Smart Type Inference**: Automatically categorizes columns as Numerical, Categorical, or Temporal (Dates/Times) to inform analysis.
+
+### 🧠 Natural Language Intelligence
+- **Conversational Querying**: Ask plain English questions like "What is the weighted average profit by region?" or "Show me sales trends compared to last year."
+- **Context Awareness**: The AI remembers previous questions and filters.
+- **Intent Recognition**: Automatically classifies requests as Visualization, Transformation, or Complex Analysis.
+
+### 📊 Advanced Visualization
+- **Auto-Charting**: Intelligently selects the best chart type (Bar, Line, Area, Scatter, Pie, Donut) based on the data.
+- **Multi-Dimensional Analysis**:
+  - **Multi-Metric**: Compare two values on one chart (e.g., "Revenue and Profit by Month").
+  - **Grouped/Stacked**: View data by two dimensions (e.g., "Sales by Region, grouped by Product Category").
+- **Interactivity**:
+  - **Zoom & Pan**: Inspect dense line or scatter charts using mouse wheel and drag.
+  - **Click-to-Filter**: Double-click any chart element (bar, slice, point) to instantly filter the entire dataset to that specific segment.
+
+### 📉 Complex Analysis Engine
+- **Analysis Planner**: An internal AI agent breaks down multi-step queries into executable actions (e.g., "Filter data -> Group by X -> Calculate Avg Y -> Sort -> Visualize").
+- **JavaScript Sandbox**: Writes and executes custom JavaScript logic on the fly for complex statistical formulas (e.g., correlations, weighted averages, custom pivots) that standard aggregations cannot handle.
+
+### 🛠 Data Transformation Tools
+- **Conversational Editing**: Modify data via chat commands:
+  - "Remove rows where Age is less than 18."
+  - "Create a new column 'Total' by adding 'Subtotal' and 'Tax'."
+  - "Rename column 'cust_id' to 'Customer ID'."
+- **GUI Sidebar Tools**: Manual controls for renaming columns, performing math operations, and setting specific filters without typing.
+
+### 📤 Export & Sharing
+- **Data Export**: Download the cleaned and transformed dataset as CSV or Excel.
+- **Image Export**: Save any generated chart as a high-quality PNG image for presentations.
+
+## 3. How to Use DataInsight AI
+
+### Step 1: Upload Data
+- Open the application.
+- Drag and drop your CSV or Excel file into the "Data Source" area on the left sidebar.
+- Wait a moment for the AI to parse, clean, and summarize your data.
+
+### Step 2: Explore & Visualize
+- **Read the Summary**: The AI will provide an initial overview and key stats.
+- **Ask Questions**: Type in the chat box.
+  - *Simple*: "Show total sales by city."
+  - *Complex*: "Calculate the average profit margin per category and show the top 5."
+- **Use Suggestions**: Click on the AI-generated "suggested questions" chips to get started quickly.
+
+### Step 3: Transform & Clean (Optional)
+- If your data has noise, tell the AI to clean it.
+  - Example: "Remove all rows where the Status is 'Refunded'."
+- Create new metrics.
+  - Example: "Create a column 'Net_Price' by subtracting 'Discount' from 'Price'."
+- All subsequent analysis will be performed on this new, clean version of your data.
+
+### Step 4: Filter & Drill Down
+- **Visual Filter**: If you see an interesting outlier in a chart (e.g., a spike in Sales for "Q4"), double-click that bar. The app will filter the *entire* dataset to just Q4.
+- **Sidebar Filter**: You can also manually add filters using the "Data Tools" tab in the sidebar.
+- Ask follow-up questions on this filtered subset.
+
+### Step 5: Export Results
+- Once you have the insights you need, use the **Export** buttons in the sidebar to download the modified dataset.
+- Click the **Export PNG** button on any specific chart to save the visualization.
+
+## 4. Tech Stack
+- **Core AI**: Google Gemini 2.5 Flash (via `@google/genai` SDK).
+- **Frontend**: Vanilla JavaScript (ES Modules), HTML5, CSS3.
+- **Design System**: Neobrutalism (High contrast, bold typography, "Google Palette").
+- **Data Engine**: `PapaParse` (CSV), `SheetJS` (Excel).
+- **Visualization**: `Chart.js` with `chartjs-plugin-zoom`.
+
+## 5. Value Proposition
+- **Democratization of Data**: Empowers non-technical teams (Sales, HR, Marketing) to answer ad-hoc questions without SQL knowledge.
+- **Privacy First**: All data processing happens client-side in the browser. Raw data is never stored on external servers.
+- **Speed**: Reduces time-to-insight from days to seconds.
+- **Zero Setup**: Works immediately in any modern web browser.
