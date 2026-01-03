@@ -1,4 +1,5 @@
 # DataInsight AI - Application Overview
+# App url - https://final-datainsights-468851459521.us-west1.run.app
 
 ## 1. Executive Summary
 DataInsight AI is an intelligent, browser-based analytics assistant that transforms raw data files (CSV, Excel) into actionable insights. By leveraging Google's Gemini 2.5 AI model, it allows users to query data using natural language, perform complex statistical analysis, and generate interactive visualizations instantly. It bridges the gap between non-technical users and advanced data analytics operations.
